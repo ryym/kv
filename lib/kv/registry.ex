@@ -28,21 +28,41 @@ defmodule KV.Registry do
 
   # The first argument is a second argument of `GenServer.start_link`
   def init(:ok) do
-    {:ok, %{}}
+    names = %{}
+    refs = %{}
+    {:ok, {names, refs}}
   end
 
   # Calls are synchronous while Casts are asynchronous.
-  def handle_call({:lookup, name}, _from, names) do
+  def handle_call({:lookup, name}, _from, {names, _} = state) do
     # {:reply, reply_to_client, new_state}
-    {:reply, Map.fetch(names, name), names}
+    {:reply, Map.fetch(names, name), state}
   end
 
-  def handle_cast({:create, name}, names) do
+  def handle_cast({:create, name}, {names, refs}) do
     if Map.has_key?(names, name) do
       {:noreply, names}
     else
-      {:ok, bucket} = KV.Bucket.start_link
-      {:noreply, Map.put(names, name, bucket)}
+      {:ok, pid} = KV.Bucket.start_link
+      ref = Process.monitor(pid)
+      refs = Map.put(refs, ref, name)
+      names = Map.put(names, name, pid)
+      {:noreply, {names, refs}}
     end
+  end
+
+  # `handle_info` receives generic messages sent to the Registry process.
+  # We can handle messages from processes created in `handle_cast` by
+  # monitoring them. When a process monitors another process, it receives
+  # messages sent from the monitored one (uni-directional link).
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, {names, refs}) do
+    {name, refs} = Map.pop(refs, ref)
+    names = Map.delete(names, name)
+    {:noreply, {names, refs}}
+  end
+
+  def handle_info(msg, state) do
+    IO.inspect(msg)
+    {:noreply, state}
   end
 end
