@@ -39,6 +39,8 @@ defmodule KV.Registry do
     {:reply, Map.fetch(names, name), state}
   end
 
+  # Actually we should use Call instead of Cast for creation
+  # (https://elixir-lang.org/getting-started/mix-otp/genserver.html#call-cast-or-info)
   def handle_cast({:create, name}, {names, refs}) do
     if Map.has_key?(names, name) do
       {:noreply, names}
