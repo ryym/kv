@@ -10,9 +10,14 @@ defmodule KV.Supervisor do
   def init(:ok) do
     children = [
       # KV.Registry.start_link(KV.Registry)
-      worker(KV.Registry, [KV.Registry])
+      worker(KV.Registry, [KV.Registry]),
+      supervisor(KV.Bucket.Supervisor, [])
     ]
 
-    supervise(children, strategy: :one_for_one)
+    # When a child process crashes, the supervisor will
+    # only kill and restart child processes which were
+    # started after the crashed child.
+    # (e.g. KV.Registry will not be restarted if KV.Bucket.Supervisor crashes)
+    supervise(children, strategy: :rest_for_one)
   end
 end

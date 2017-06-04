@@ -1,6 +1,11 @@
 defmodule KV.Mixfile do
   use Mix.Project
 
+  # From the Tutorial:
+  # `kv` is an application, not a project.
+  # When we talk about applications, we talk about OTP. Applications are
+  # the entities that are started and stopped as a whole by the runtime.
+
   def project do
     [app: :kv,
      version: "0.1.0",
