@@ -27,7 +27,7 @@ defmodule KV.Registry do
   Ensures there is a bucket associated to the given `name` in `server`.
   """
   def create(server, name) do
-    GenServer.cast(server, {:create, name})
+    GenServer.call(server, {:create, name})
   end
 
   @doc """
@@ -46,18 +46,16 @@ defmodule KV.Registry do
     {:ok, {names, refs}}
   end
 
-  # Actually we should use Call instead of Cast for creation
-  # (https://elixir-lang.org/getting-started/mix-otp/genserver.html#call-cast-or-info)
-  def handle_cast({:create, name}, {names, refs}) do
+  def handle_call({:create, name}, _from, {names, refs}) do
     case lookup(names, name) do
-      {:ok, _pid} ->
-        {:noreply, {names, refs}}
+      {:ok, pid} ->
+        {:reply, pid, {names, refs}} # {:reply, reply_to_client, next_state}
       :error ->
         {:ok, pid} = KV.Bucket.Supervisor.start_bucket
         ref = Process.monitor(pid)
         refs = Map.put(refs, ref, name)
         :ets.insert(names, {name, pid})
-        {:noreply, {names, refs}}
+        {:reply, pid, {names, refs}}
     end
   end
 
