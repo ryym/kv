@@ -3,6 +3,9 @@
 defmodule KV.Registry do
   use GenServer
 
+  # We use ETS as a cache mechanism where reads can happen from any processes
+  # but writes are still serialized through a single process.
+
   ### Client API
 
   @doc """
