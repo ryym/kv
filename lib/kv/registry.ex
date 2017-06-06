@@ -9,15 +9,18 @@ defmodule KV.Registry do
   Starts the registry with the given `name`.
   """
   def start_link(name) do
-    GenServer.start_link(__MODULE__, :ok, name: name)
+    GenServer.start_link(__MODULE__, name, name: name)
   end
 
   @doc """
   Looks up the bucket pid for `name` stored in `server`.
   Returns `{:ok, pid}` if the bucket exists, `:error` otherwise.
   """
-  def lookup(server, name) do
-    GenServer.call(server, {:lookup, name})
+  def lookup(server, name) when is_atom(server) do
+    case :ets.lookup(server, name) do
+      [{^name, pid}] -> {:ok, pid}
+      [] -> :error
+    end
   end
 
   @doc """
@@ -27,32 +30,34 @@ defmodule KV.Registry do
     GenServer.cast(server, {:create, name})
   end
 
+  @doc """
+  Stops the registry.
+  """
+  def stop(server) do
+    GenServer.stop(server)
+  end
+
   ### Server Callbacks
 
   # The first argument is a second argument of `GenServer.start_link`
-  def init(:ok) do
-    names = %{}
+  def init(table) do
+    names = :ets.new(table, [:named_table, read_concurrency: true])
     refs = %{}
     {:ok, {names, refs}}
-  end
-
-  # Calls are synchronous while Casts are asynchronous.
-  def handle_call({:lookup, name}, _from, {names, _} = state) do
-    # {:reply, reply_to_client, new_state}
-    {:reply, Map.fetch(names, name), state}
   end
 
   # Actually we should use Call instead of Cast for creation
   # (https://elixir-lang.org/getting-started/mix-otp/genserver.html#call-cast-or-info)
   def handle_cast({:create, name}, {names, refs}) do
-    if Map.has_key?(names, name) do
-      {:noreply, names}
-    else
-      {:ok, pid} = KV.Bucket.Supervisor.start_bucket
-      ref = Process.monitor(pid)
-      refs = Map.put(refs, ref, name)
-      names = Map.put(names, name, pid)
-      {:noreply, {names, refs}}
+    case lookup(names, name) do
+      {:ok, _pid} ->
+        {:noreply, {names, refs}}
+      :error ->
+        {:ok, pid} = KV.Bucket.Supervisor.start_bucket
+        ref = Process.monitor(pid)
+        refs = Map.put(refs, ref, name)
+        :ets.insert(names, {name, pid})
+        {:noreply, {names, refs}}
     end
   end
 
@@ -62,7 +67,7 @@ defmodule KV.Registry do
   # messages sent from the monitored one (uni-directional link).
   def handle_info({:DOWN, ref, :process, _pid, _reason}, {names, refs}) do
     {name, refs} = Map.pop(refs, ref)
-    names = Map.delete(names, name)
+    :ets.delete(names, name)
     {:noreply, {names, refs}}
   end
 
